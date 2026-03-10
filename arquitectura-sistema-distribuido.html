@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitectura — Sistema Distribuido de Correos</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1c2535;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7c3aed;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 2rem 3rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    background: linear-gradient(135deg, #0a0e1a 0%, #0d1629 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(0,212,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .badge {
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  header p { color: var(--muted); font-size: 0.85rem; }
+
+  /* NAV TABS */
+  nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 3rem;
+    overflow-x: auto;
+  }
+  nav button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  nav button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  nav button:hover { color: var(--text); }
+
+  /* MAIN */
+  main { max-width: 1400px; margin: 0 auto; padding: 2.5rem 3rem; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* SECTION LABELS */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ARCHITECTURE DIAGRAM */
+  .arch-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2.5rem;
+    position: relative;
+  }
+
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr 60px 1fr;
+    gap: 0;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+
+  .layer {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface2);
+  }
+  .layer-header {
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .layer-header.client { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .layer-header.server { background: rgba(124,58,237,0.1); color: #a78bfa; }
+  .layer-header.db { background: rgba(255,107,53,0.1); color: var(--accent2); }
+
+  .layer-body { padding: 1rem; }
+  .component {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .component:last-child { margin-bottom: 0; }
+  .component:hover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.04);
+  }
+  .component .comp-title {
+    font-weight: 600;
+    font-size: 0.82rem;
+    margin-bottom: 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .component .comp-desc { color: var(--muted); font-size: 0.73rem; }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-blue { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .dot-purple { background: #a78bfa; box-shadow: 0 0 6px #a78bfa; }
+  .dot-orange { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+
+  /* ARROWS */
+  .arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0 0.5rem;
+  }
+  .arrow-line {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent) 0%, rgba(0,212,255,0.3) 100%);
+    position: relative;
+  }
+  .arrow-line::after {
+    content: '▶';
+    position: absolute;
+    right: -6px;
+    top: -7px;
+    color: var(--accent);
+    font-size: 9px;
+  }
+  .arrow-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* FLOW DIAGRAM */
+  .flow-row {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+    margin-bottom: 1.5rem;
+  }
+  .flow-step {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 1rem 1.25rem;
+    border-radius: 0;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .flow-step:first-child { border-radius: 6px 0 0 6px; }
+  .flow-step:last-child { border-radius: 0 6px 6px 0; }
+  .flow-step:hover { border-color: var(--accent); z-index: 1; }
+  .flow-step::after {
+    content: '→';
+    position: absolute;
+    right: -14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent);
+    font-size: 1.1rem;
+    z-index: 2;
+  }
+  .flow-step:last-child::after { display: none; }
+  .flow-num {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+  .flow-step h4 { font-size: 0.82rem; font-weight: 600; margin-bottom: 0.2rem; }
+  .flow-step p { font-size: 0.73rem; color: var(--muted); }
+
+  /* CODE BLOCKS */
+  .code-section { margin-bottom: 2rem; }
+  .code-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .code-section h3 .tag {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 400;
+  }
+  .tag-node { background: rgba(16,185,129,0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+  .tag-sql { background: rgba(255,107,53,0.15); color: var(--accent2); border: 1px solid rgba(255,107,53,0.3); }
+  .tag-html { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+  .tag-env { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3); }
+
+  pre {
+    background: #060b14;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem 1.5rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+  }
+  .kw { color: #7dd3fc; }
+  .str { color: #86efac; }
+  .cmt { color: #4b5563; font-style: italic; }
+  .fn { color: #fbbf24; }
+  .num { color: #f9a8d4; }
+  .op { color: var(--accent); }
+  .type { color: #c4b5fd; }
+
+  /* STACK TABLE */
+  .stack-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .stack-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .stack-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    vertical-align: top;
+  }
+  .stack-table tr:hover td { background: rgba(0,212,255,0.02); }
+  .stack-table .tech-name { font-weight: 600; color: var(--text); }
+  .stack-table .tech-desc { color: var(--muted); font-size: 0.75rem; margin-top: 0.2rem; }
+
+  /* CALLOUT */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(0,212,255,0.04);
+    padding: 1rem 1.25rem;
+    border-radius: 0 6px 6px 0;
+    margin: 1.5rem 0;
+    font-size: 0.82rem;
+  }
+  .callout.warn {
+    border-left-color: var(--yellow);
+    background: rgba(245,158,11,0.04);
+  }
+  .callout.success {
+    border-left-color: var(--green);
+    background: rgba(16,185,129,0.04);
+  }
+  .callout strong { font-weight: 700; }
+
+  /* GRID 2 */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+  .card h4 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card ul { list-style: none; }
+  .card ul li {
+    font-size: 0.8rem;
+    color: var(--muted);
+    padding: 0.3rem 0;
+    border-bottom: 1px solid rgba(30,45,69,0.4);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .card ul li:last-child { border-bottom: none; }
+  .card ul li::before { content: '—'; color: var(--border); flex-shrink: 0; }
+
+  /* RESPONSIVE */
+  @media (max-width: 900px) {
+    header, nav, main { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .arch-grid { grid-template-columns: 1fr; }
+    .arrow-col { transform: rotate(90deg); margin: 0.5rem 0; }
+    .grid2 { grid-template-columns: 1fr; }
+    .flow-row { flex-direction: column; }
+    .flow-step { border-radius: 0 !important; }
+    .flow-step::after { content: '↓'; right: auto; top: auto; bottom: -14px; left: 50%; transform: translateX(-50%); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="badge" style="margin-bottom:0.5rem">Arquitectura v1.0</div>
+    <h1>Sistema Distribuido — Gestión de Correos</h1>
+    <p>Web Local → Node.js API → Oracle Autonomous DB (FreeSQL)</p>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('arquitectura')">Arquitectura</button>
+  <button onclick="showTab('flujos')">Flujos de Datos</button>
+  <button onclick="showTab('codigo')">Código Base</button>
+  <button onclick="showTab('bd')">Base de Datos</button>
+  <button onclick="showTab('stack')">Stack Tecnológico</button>
+  <button onclick="showTab('seguridad')">Seguridad & Deploy</button>
+</nav>
+
+<main>
+
+<!-- TAB 1: ARQUITECTURA -->
+<div id="tab-arquitectura" class="tab-content active">
+  <div class="section-label">01 — Visión General del Sistema</div>
+
+  <div class="arch-container">
+    <div class="arch-grid">
+
+      <!-- CLIENTE -->
+      <div class="layer">
+        <div class="layer-header client">
+          <span>◈</span> Capa Cliente (Local)
+        </div>
+        <div class="layer-body">
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-blue"></span>HTML/CSS/JS Frontend</div>
+            <div class="comp-desc">Interfaz de usuario · Bandeja de entrada · Compositor de correos</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-blue"></span>Fetch / Axios</div>
+            <div class="comp-desc">Cliente HTTP → llama a la REST API</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-green"></span>LocalStorage / Estado</div>
+            <div class="comp-desc">Token JWT · preferencias · cache de sesión</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ARROW 1 -->
+      <div class="arrow-col">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">HTTPS<br>REST JSON</div>
+        <div class="arrow-line" style="transform:scaleX(-1)"></div>
+      </div>
+
+      <!-- SERVIDOR -->
+      <div class="layer">
+        <div class="layer-header server">
+          <span>⬡</span> Capa Servidor (Node.js)
+        </div>
+        <div class="layer-body">
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-purple"></span>Express.js Router</div>
+            <div class="comp-desc">Rutas API · middlewares · CORS · rate limiting</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-purple"></span>Nodemailer + SMTP</div>
+            <div class="comp-desc">Envío real de correos (Gmail/Outlook/SMTP propio)</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-yellow"></span>Auth Middleware (JWT)</div>
+            <div class="comp-desc">Verificación de tokens · sesiones</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-purple"></span>Email Service</div>
+            <div class="comp-desc">Lógica de negocio · validaciones · formato</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ARROW 2 -->
+      <div class="arrow-col">
+        <div class="arrow-line"></div>
+        <div class="arrow-label">Oracle<br>Driver TCP</div>
+        <div class="arrow-line" style="transform:scaleX(-1)"></div>
+      </div>
+
+      <!-- BASE DE DATOS -->
+      <div class="layer">
+        <div class="layer-header db">
+          <span>◎</span> Oracle Autonomous DB
+        </div>
+        <div class="layer-body">
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-orange"></span>Tabla EMAILS</div>
+            <div class="comp-desc">Historial completo de correos enviados/recibidos</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-orange"></span>Tabla USERS</div>
+            <div class="comp-desc">Autenticación · perfiles · permisos</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-orange"></span>Tabla ATTACHMENTS</div>
+            <div class="comp-desc">Metadatos de adjuntos (archivos en BLOB/storage)</div>
+          </div>
+          <div class="component">
+            <div class="comp-title"><span class="dot dot-green"></span>Oracle Wallet (mTLS)</div>
+            <div class="comp-desc">Conexión segura cifrada · credenciales</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="callout">
+      <strong>Nota de arquitectura:</strong> El frontend corre localmente (file:// o localhost:3000). El servidor Node.js actúa como BFF (Backend for Frontend) y es el único componente que se conecta a Oracle. El cliente nunca toca la DB directamente.
+    </div>
+
+    <!-- EXTERNAL SERVICES -->
+    <div class="section-label" style="margin-top:1.5rem">Servicios Externos</div>
+    <div class="grid2">
+      <div class="card">
+        <h4>📧 SMTP Provider</h4>
+        <ul>
+          <li>Gmail SMTP (smtp.gmail.com:587)</li>
+          <li>Outlook / Office 365</li>
+          <li>SendGrid / Mailgun (recomendado para producción)</li>
+          <li>SMTP propio con Postfix</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>☁️ Oracle Cloud (Always Free)</h4>
+        <ul>
+          <li>Autonomous Database 20GB gratuito</li>
+          <li>Acceso vía TCPS (puerto 1521/1522)</li>
+          <li>Oracle Wallet descargable desde OCI Console</li>
+          <li>Driver: <code style="color:var(--accent);font-size:0.75rem">oracledb</code> para Node.js</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: FLUJOS -->
+<div id="tab-flujos" class="tab-content">
+  <div class="section-label">02 — Flujos de Datos</div>
+
+  <div class="arch-container">
+    <h3 style="font-size:0.9rem; margin-bottom:1.25rem; color:var(--accent); font-family:var(--mono); font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase;">FLUJO A — Enviar un correo nuevo</h3>
+    <div class="flow-row">
+      <div class="flow-step">
+        <div class="flow-num">01</div>
+        <h4>Usuario llena form</h4>
+        <p>Para, Asunto, Cuerpo del mensaje en el frontend</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">02</div>
+        <h4>POST /api/emails/send</h4>
+        <p>Fetch con JSON + token JWT en header Authorization</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">03</div>
+        <h4>Validación en servidor</h4>
+        <p>Verifica JWT, valida campos, sanitiza inputs</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">04</div>
+        <h4>Nodemailer envía</h4>
+        <p>Conecta a SMTP y envía el correo real</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">05</div>
+        <h4>INSERT en Oracle</h4>
+        <p>Guarda registro completo en tabla EMAILS</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">06</div>
+        <h4>200 OK al cliente</h4>
+        <p>Respuesta con el ID del correo guardado</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:0.9rem; margin-bottom:1.25rem; color:#a78bfa; font-family:var(--mono); font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; margin-top:2rem;">FLUJO B — Ver historial de correos</h3>
+    <div class="flow-row">
+      <div class="flow-step">
+        <div class="flow-num">01</div>
+        <h4>Usuario abre bandeja</h4>
+        <p>El frontend monta el componente de lista</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">02</div>
+        <h4>GET /api/emails</h4>
+        <p>Query params: page, limit, search, dateFrom</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">03</div>
+        <h4>SELECT paginado</h4>
+        <p>Oracle devuelve filas con OFFSET/FETCH NEXT</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">04</div>
+        <h4>JSON response</h4>
+        <p>Array de emails + metadata de paginación</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">05</div>
+        <h4>Render en lista</h4>
+        <p>Frontend muestra correos con paginación</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:0.9rem; margin-bottom:1.25rem; color:var(--green); font-family:var(--mono); font-size:0.75rem; letter-spacing:0.1em; text-transform:uppercase; margin-top:2rem;">FLUJO C — Autenticación</h3>
+    <div class="flow-row">
+      <div class="flow-step">
+        <div class="flow-num">01</div>
+        <h4>Login form</h4>
+        <p>Usuario ingresa email + contraseña</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">02</div>
+        <h4>POST /api/auth/login</h4>
+        <p>Credenciales en body JSON (HTTPS)</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">03</div>
+        <h4>Verifica en USERS</h4>
+        <p>bcrypt.compare del hash almacenado</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">04</div>
+        <h4>Genera JWT</h4>
+        <p>Token con userId, expira en 24h</p>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">05</div>
+        <h4>Token en cliente</h4>
+        <p>Guardado en memory/sessionStorage</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: CÓDIGO -->
+<div id="tab-codigo" class="tab-content">
+  <div class="section-label">03 — Código Base del Proyecto</div>
+
+  <div class="code-section">
+    <h3>Estructura del Proyecto <span class="tag tag-node">Node.js</span></h3>
+    <pre><span class="cmt">email-system/
+├── server/
+│   ├── index.js              ← Entrada principal Express
+│   ├── config/
+│   │   ├── db.js             ← Conexión Oracle
+│   │   └── mailer.js         ← Config Nodemailer
+│   ├── routes/
+│   │   ├── auth.js           ← POST /login, /logout
+│   │   └── emails.js         ← CRUD de correos
+│   ├── middleware/
+│   │   └── auth.js           ← Verificación JWT
+│   ├── services/
+│   │   ├── emailService.js   ← Lógica de envío + BD
+│   │   └── userService.js    ← Gestión de usuarios
+│   └── .env                  ← Variables de entorno
+├── client/
+│   ├── index.html            ← App frontend
+│   ├── style.css
+│   └── app.js                ← Lógica cliente
+├── wallet/                   ← Oracle Wallet (mTLS)
+│   ├── cwallet.sso
+│   ├── sqlnet.ora
+│   └── tnsnames.ora
+└── package.json</span></pre>
+  </div>
+
+  <div class="code-section">
+    <h3>server/config/db.js — Conexión Oracle <span class="tag tag-sql">Oracle</span></h3>
+    <pre><span class="kw">const</span> oracledb = <span class="fn">require</span>(<span class="str">'oracledb'</span>);
+<span class="kw">const</span> path = <span class="fn">require</span>(<span class="str">'path'</span>);
+
+<span class="cmt">// Inicializar cliente Oracle Thick (necesario para Wallet)</span>
+oracledb.<span class="fn">initOracleClient</span>({ libDir: process.env.ORACLE_LIB_DIR });
+
+<span class="kw">const</span> dbConfig = {
+  user:             process.env.DB_USER,
+  password:         process.env.DB_PASSWORD,
+  connectString:    process.env.DB_CONNECT_STRING, <span class="cmt">// ej: mydb_high</span>
+  walletLocation:   path.<span class="fn">join</span>(__dirname, <span class="str">'../../wallet'</span>),
+  walletPassword:   process.env.WALLET_PASSWORD,
+};
+
+<span class="kw">let</span> pool;
+
+<span class="kw">async function</span> <span class="fn">initPool</span>() {
+  pool = <span class="kw">await</span> oracledb.<span class="fn">createPool</span>({
+    ...dbConfig,
+    poolMin:  <span class="num">2</span>,
+    poolMax:  <span class="num">10</span>,
+    poolIncrement: <span class="num">1</span>,
+  });
+  console.<span class="fn">log</span>(<span class="str">'✓ Oracle connection pool ready'</span>);
+}
+
+<span class="kw">async function</span> <span class="fn">getConnection</span>() {
+  <span class="kw">return await</span> pool.<span class="fn">getConnection</span>();
+}
+
+module.exports = { initPool, getConnection };</pre>
+  </div>
+
+  <div class="code-section">
+    <h3>server/services/emailService.js <span class="tag tag-node">Service</span></h3>
+    <pre><span class="kw">const</span> { getConnection } = <span class="fn">require</span>(<span class="str">'../config/db'</span>);
+<span class="kw">const</span> transporter    = <span class="fn">require</span>(<span class="str">'../config/mailer'</span>);
+
+<span class="kw">async function</span> <span class="fn">sendEmail</span>({ from, to, subject, body, userId }) {
+  <span class="cmt">// 1. Enviar el correo real vía SMTP</span>
+  <span class="kw">const</span> info = <span class="kw">await</span> transporter.<span class="fn">sendMail</span>({
+    from, to, subject,
+    html: body,
+  });
+
+  <span class="cmt">// 2. Guardar en Oracle</span>
+  <span class="kw">const</span> conn = <span class="kw">await</span> <span class="fn">getConnection</span>();
+  <span class="kw">try</span> {
+    <span class="kw">const</span> result = <span class="kw">await</span> conn.<span class="fn">execute</span>(
+      <span class="str">`INSERT INTO EMAILS
+         (ID, FROM_ADDRESS, TO_ADDRESS, SUBJECT, BODY,
+          STATUS, MESSAGE_ID, SENT_AT, USER_ID)
+       VALUES
+         (EMAILS_SEQ.NEXTVAL, :from, :to, :subject, :body,
+          'SENT', :messageId, SYSDATE, :userId)`</span>,
+      { from, to, subject, body,
+        messageId: info.messageId, userId },
+      { autoCommit: <span class="kw">true</span> }
+    );
+    <span class="kw">return</span> result.lastRowid;
+  } <span class="kw">finally</span> {
+    <span class="kw">await</span> conn.<span class="fn">close</span>();
+  }
+}
+
+<span class="kw">async function</span> <span class="fn">getEmails</span>({ userId, page = <span class="num">1</span>, limit = <span class="num">20</span>, search = <span class="str">''</span> }) {
+  <span class="kw">const</span> offset = (page - <span class="num">1</span>) * limit;
+  <span class="kw">const</span> conn = <span class="kw">await</span> <span class="fn">getConnection</span>();
+  <span class="kw">try</span> {
+    <span class="kw">const</span> { rows } = <span class="kw">await</span> conn.<span class="fn">execute</span>(
+      <span class="str">`SELECT ID, FROM_ADDRESS, TO_ADDRESS, SUBJECT,
+              SUBSTR(BODY, 1, 200) AS PREVIEW,
+              STATUS, SENT_AT
+       FROM EMAILS
+       WHERE USER_ID = :userId
+         AND (SUBJECT LIKE :search OR TO_ADDRESS LIKE :search)
+       ORDER BY SENT_AT DESC
+       OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`</span>,
+      { userId, search: <span class="str">`%${search}%`</span>, offset, limit },
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    <span class="kw">return</span> rows;
+  } <span class="kw">finally</span> {
+    <span class="kw">await</span> conn.<span class="fn">close</span>();
+  }
+}
+
+module.exports = { sendEmail, getEmails };</pre>
+  </div>
+
+  <div class="code-section">
+    <h3>server/routes/emails.js <span class="tag tag-node">Router</span></h3>
+    <pre><span class="kw">const</span> router         = <span class="fn">require</span>(<span class="str">'express'</span>).<span class="fn">Router</span>();
+<span class="kw">const</span> { sendEmail, getEmails } = <span class="fn">require</span>(<span class="str">'../services/emailService'</span>);
+<span class="kw">const</span> authMiddleware = <span class="fn">require</span>(<span class="str">'../middleware/auth'</span>);
+
+<span class="cmt">// Todas las rutas requieren autenticación</span>
+router.<span class="fn">use</span>(authMiddleware);
+
+<span class="cmt">// GET /api/emails — listar con paginación y búsqueda</span>
+router.<span class="fn">get</span>(<span class="str">'/'</span>, <span class="kw">async</span> (req, res) => {
+  <span class="kw">const</span> { page, limit, search } = req.query;
+  <span class="kw">const</span> emails = <span class="kw">await</span> <span class="fn">getEmails</span>({
+    userId: req.user.id,
+    page:   <span class="fn">parseInt</span>(page) || <span class="num">1</span>,
+    limit:  <span class="fn">parseInt</span>(limit) || <span class="num">20</span>,
+    search: search || <span class="str">''</span>
+  });
+  res.<span class="fn">json</span>({ success: <span class="kw">true</span>, data: emails });
+});
+
+<span class="cmt">// POST /api/emails/send — enviar correo</span>
+router.<span class="fn">post</span>(<span class="str">'/send'</span>, <span class="kw">async</span> (req, res) => {
+  <span class="kw">const</span> { to, subject, body } = req.body;
+  <span class="kw">if</span> (!to || !subject || !body)
+    <span class="kw">return</span> res.<span class="fn">status</span>(<span class="num">400</span>).<span class="fn">json</span>({ error: <span class="str">'Faltan campos requeridos'</span> });
+
+  <span class="kw">const</span> rowId = <span class="kw">await</span> <span class="fn">sendEmail</span>({
+    from:   process.env.SMTP_FROM,
+    to, subject, body,
+    userId: req.user.id
+  });
+  res.<span class="fn">json</span>({ success: <span class="kw">true</span>, id: rowId });
+});
+
+<span class="cmt">// GET /api/emails/:id — ver correo completo</span>
+router.<span class="fn">get</span>(<span class="str">'/:id'</span>, <span class="kw">async</span> (req, res) => { <span class="cmt">/* ... */</span> });
+
+module.exports = router;</pre>
+  </div>
+
+  <div class="code-section">
+    <h3>.env — Variables de Entorno <span class="tag tag-env">.env</span></h3>
+    <pre><span class="cmt"># Servidor</span>
+PORT=<span class="num">4000</span>
+NODE_ENV=development
+JWT_SECRET=tu_secreto_muy_largo_aqui_min_32_chars
+
+<span class="cmt"># Oracle Autonomous DB</span>
+DB_USER=ADMIN
+DB_PASSWORD=TuPasswordOracle123!
+DB_CONNECT_STRING=nombre_db_high        <span class="cmt"># Del tnsnames.ora</span>
+WALLET_PASSWORD=TuWalletPassword!
+ORACLE_LIB_DIR=/opt/oracle/instantclient_21_3
+
+<span class="cmt"># SMTP (ejemplo Gmail)</span>
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tucorreo@gmail.com
+SMTP_PASS=app_password_de_gmail         <span class="cmt"># Contraseña de app, no la normal</span>
+SMTP_FROM="Mi App &lt;tucorreo@gmail.com&gt;"</pre>
+  </div>
+</div>
+
+<!-- TAB 4: BD -->
+<div id="tab-bd" class="tab-content">
+  <div class="section-label">04 — Esquema de Base de Datos Oracle</div>
+
+  <div class="code-section">
+    <h3>DDL — Creación de Tablas <span class="tag tag-sql">SQL</span></h3>
+    <pre><span class="cmt">-- =============================================
+-- TABLA: USERS
+-- =============================================</span>
+<span class="kw">CREATE TABLE</span> USERS (
+  ID            <span class="type">NUMBER</span>         <span class="kw">GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+  EMAIL         <span class="type">VARCHAR2(255)</span>  <span class="kw">NOT NULL UNIQUE</span>,
+  PASSWORD_HASH <span class="type">VARCHAR2(255)</span>  <span class="kw">NOT NULL</span>,
+  DISPLAY_NAME  <span class="type">VARCHAR2(100)</span>,
+  CREATED_AT    <span class="type">TIMESTAMP</span>      <span class="kw">DEFAULT</span> SYSTIMESTAMP,
+  IS_ACTIVE     <span class="type">NUMBER(1)</span>      <span class="kw">DEFAULT</span> <span class="num">1</span>
+);
+
+<span class="cmt">-- =============================================
+-- SECUENCIA + TABLA: EMAILS
+-- =============================================</span>
+<span class="kw">CREATE SEQUENCE</span> EMAILS_SEQ <span class="kw">START WITH</span> <span class="num">1</span> <span class="kw">INCREMENT BY</span> <span class="num">1</span>;
+
+<span class="kw">CREATE TABLE</span> EMAILS (
+  ID            <span class="type">NUMBER</span>         <span class="kw">PRIMARY KEY</span>,
+  USER_ID       <span class="type">NUMBER</span>         <span class="kw">NOT NULL REFERENCES</span> USERS(ID),
+  FROM_ADDRESS  <span class="type">VARCHAR2(255)</span>  <span class="kw">NOT NULL</span>,
+  TO_ADDRESS    <span class="type">VARCHAR2(2000)</span> <span class="kw">NOT NULL</span>,    <span class="cmt">-- múltiples destinatarios</span>
+  CC_ADDRESS    <span class="type">VARCHAR2(2000)</span>,
+  SUBJECT       <span class="type">VARCHAR2(1000)</span> <span class="kw">NOT NULL</span>,
+  BODY          <span class="type">CLOB</span>,                          <span class="cmt">-- HTML permitido</span>
+  STATUS        <span class="type">VARCHAR2(20)</span>   <span class="kw">DEFAULT</span> <span class="str">'SENT'</span>,<span class="cmt">-- SENT | DRAFT | FAILED</span>
+  MESSAGE_ID    <span class="type">VARCHAR2(500)</span>,                 <span class="cmt">-- ID del servidor SMTP</span>
+  SENT_AT       <span class="type">TIMESTAMP</span>      <span class="kw">DEFAULT</span> SYSTIMESTAMP,
+  IS_READ       <span class="type">NUMBER(1)</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  IS_DELETED    <span class="type">NUMBER(1)</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>
+);
+
+<span class="cmt">-- ÍNDICES para rendimiento</span>
+<span class="kw">CREATE INDEX</span> IDX_EMAILS_USER     <span class="kw">ON</span> EMAILS(USER_ID);
+<span class="kw">CREATE INDEX</span> IDX_EMAILS_SENT_AT  <span class="kw">ON</span> EMAILS(SENT_AT <span class="kw">DESC</span>);
+<span class="kw">CREATE INDEX</span> IDX_EMAILS_STATUS   <span class="kw">ON</span> EMAILS(STATUS);
+
+<span class="cmt">-- =============================================
+-- TABLA: ATTACHMENTS
+-- =============================================</span>
+<span class="kw">CREATE TABLE</span> ATTACHMENTS (
+  ID          <span class="type">NUMBER</span>          <span class="kw">GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+  EMAIL_ID    <span class="type">NUMBER</span>          <span class="kw">NOT NULL REFERENCES</span> EMAILS(ID) <span class="kw">ON DELETE CASCADE</span>,
+  FILENAME    <span class="type">VARCHAR2(500)</span>   <span class="kw">NOT NULL</span>,
+  MIME_TYPE   <span class="type">VARCHAR2(100)</span>,
+  FILE_SIZE   <span class="type">NUMBER</span>,
+  STORAGE_URL <span class="type">VARCHAR2(2000)</span>  <span class="cmt">-- URL de OCI Object Storage</span>
+);
+
+<span class="cmt">-- GRANT de acceso (si usas esquema aparte)</span>
+<span class="kw">GRANT SELECT, INSERT, UPDATE, DELETE ON</span> EMAILS <span class="kw">TO</span> APP_USER;
+<span class="kw">GRANT SELECT, INSERT ON</span> USERS <span class="kw">TO</span> APP_USER;</pre>
+  </div>
+
+  <div class="callout success">
+    <strong>Oracle Always Free:</strong> Tienes 20GB de almacenamiento gratuito con Oracle Autonomous Database. El tipo de conexión recomendado es <code>*_high</code> (mayor paralelismo) para consultas de reportes, y <code>*_tp</code> para transacciones OLTP como el envío de correos.
+  </div>
+
+  <div class="code-section">
+    <h3>Configuración del Oracle Wallet <span class="tag tag-sql">Oracle</span></h3>
+    <pre><span class="cmt">-- Pasos desde OCI Console:</span>
+<span class="cmt">-- 1. OCI → Autonomous Database → Tu DB → DB Connection</span>
+<span class="cmt">-- 2. Descargar Instance Wallet → guárdalo en /wallet/</span>
+<span class="cmt">-- 3. Descomprimir: unzip Wallet_TUDB.zip -d wallet/</span>
+
+<span class="cmt">-- En sqlnet.ora (ya viene configurado, solo verifica):</span>
+WALLET_LOCATION = (SOURCE = (METHOD = file)
+                  (METHOD_DATA = (DIRECTORY = "/app/wallet")))
+SSL_SERVER_DN_MATCH = yes
+
+<span class="cmt">-- tnsnames.ora muestra los nombres de conexión disponibles:</span>
+<span class="cmt">-- tudb_high, tudb_medium, tudb_low, tudb_tp, tudb_tpurgent</span></pre>
+  </div>
+</div>
+
+<!-- TAB 5: STACK -->
+<div id="tab-stack" class="tab-content">
+  <div class="section-label">05 — Stack Tecnológico Completo</div>
+
+  <div class="arch-container">
+    <table class="stack-table">
+      <thead>
+        <tr>
+          <th>Capa</th>
+          <th>Tecnología</th>
+          <th>Versión</th>
+          <th>Rol en el sistema</th>
+          <th>Instalación</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="dot dot-blue" style="display:inline-block"></span> Frontend</td>
+          <td><div class="tech-name">HTML5 + CSS3 + JS</div><div class="tech-desc">Vanilla o React/Vue</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">ES2022+</span></td>
+          <td>Interfaz de usuario, compositor de emails, bandeja de entrada</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-purple" style="display:inline-block"></span> Runtime</td>
+          <td><div class="tech-name">Node.js</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">≥18 LTS</span></td>
+          <td>Servidor de aplicación, procesamiento async/await</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">nvm install 18</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-purple" style="display:inline-block"></span> Framework</td>
+          <td><div class="tech-name">Express.js</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">4.x</span></td>
+          <td>Router HTTP, middlewares, manejo de rutas REST</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i express</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-orange" style="display:inline-block"></span> Database</td>
+          <td><div class="tech-name">Oracle Autonomous DB</div><div class="tech-desc">Always Free tier</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">21c</span></td>
+          <td>Persistencia de correos, usuarios, historial</td>
+          <td>OCI Console</td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-orange" style="display:inline-block"></span> DB Driver</td>
+          <td><div class="tech-name">node-oracledb</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">6.x</span></td>
+          <td>Conexión Oracle, pool de conexiones, queries</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i oracledb</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-green" style="display:inline-block"></span> Email</td>
+          <td><div class="tech-name">Nodemailer</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">6.x</span></td>
+          <td>Envío SMTP de correos reales con adjuntos</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i nodemailer</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-yellow" style="display:inline-block"></span> Auth</td>
+          <td><div class="tech-name">jsonwebtoken</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">9.x</span></td>
+          <td>Generación y verificación de tokens JWT</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i jsonwebtoken</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-yellow" style="display:inline-block"></span> Auth</td>
+          <td><div class="tech-name">bcryptjs</div></td>
+          <td><span style="color:var(--muted); font-family:var(--mono); font-size:0.75rem">2.x</span></td>
+          <td>Hash seguro de contraseñas (salt rounds: 12)</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i bcryptjs</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-blue" style="display:inline-block"></span> Seguridad</td>
+          <td><div class="tech-name">helmet + cors</div></td>
+          <td></td>
+          <td>Headers HTTP seguros, control de CORS</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i helmet cors</code></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-blue" style="display:inline-block"></span> Validación</td>
+          <td><div class="tech-name">express-validator</div></td>
+          <td></td>
+          <td>Validación y sanitización de inputs del usuario</td>
+          <td><code style="color:var(--accent);font-size:0.75rem">npm i express-validator</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout" style="margin-top:1.5rem">
+      <strong>package.json install rápido:</strong><br>
+      <code style="color:var(--accent); font-family:var(--mono); font-size:0.82rem; display:block; margin-top:0.5rem">
+        npm install express oracledb nodemailer jsonwebtoken bcryptjs helmet cors express-validator dotenv
+      </code>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 6: SEGURIDAD -->
+<div id="tab-seguridad" class="tab-content">
+  <div class="section-label">06 — Seguridad & Pasos de Deploy</div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>🔐 Seguridad Implementada</h4>
+      <ul>
+        <li>Conexión Oracle con mTLS vía Wallet (cifrado en tránsito)</li>
+        <li>Contraseñas hasheadas con bcrypt (salt=12)</li>
+        <li>JWT con expiración + refresh token opcional</li>
+        <li>Helmet.js: CSP, HSTS, X-Frame-Options</li>
+        <li>Rate limiting: 100 req/15min por IP</li>
+        <li>Validación y sanitización de todos los inputs</li>
+        <li>Variables sensibles solo en .env (nunca en código)</li>
+        <li>SMTP con TLS obligatorio (STARTTLS)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>⚠️ Puntos Críticos a No Olvidar</h4>
+      <ul>
+        <li>Nunca subir .env ni /wallet/ a git (.gitignore)</li>
+        <li>Gmail requiere "App Password" (no contraseña normal)</li>
+        <li>Oracle Wallet debe ser accesible por el proceso Node</li>
+        <li>CORS restringido a tu dominio/localhost específico</li>
+        <li>Usar HTTPS en producción (Let's Encrypt / Nginx)</li>
+        <li>Body del correo sanitizado contra XSS (DOMPurify)</li>
+        <li>Logs de errores sin datos sensibles</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="code-section" style="margin-top:1.5rem">
+    <h3>Pasos para arrancar el proyecto <span class="tag tag-node">Setup</span></h3>
+    <pre><span class="cmt"># 1. Clonar estructura e instalar dependencias</span>
+mkdir email-system && cd email-system
+npm init -y
+npm install express oracledb nodemailer jsonwebtoken \
+            bcryptjs helmet cors express-validator dotenv
+
+<span class="cmt"># 2. Descargar Oracle Instant Client (necesario para oracledb Thick mode)</span>
+<span class="cmt">#    https://www.oracle.com/database/technologies/instant-client.html</span>
+<span class="cmt">#    Descomprimir en /opt/oracle/instantclient_21_3</span>
+
+<span class="cmt"># 3. Descargar el Wallet desde OCI Console</span>
+<span class="cmt">#    OCI → Autonomous DB → DB Connection → Download Wallet</span>
+mkdir wallet
+unzip Wallet_TUDB.zip -d wallet/
+
+<span class="cmt"># 4. Configurar .env con tus credenciales</span>
+cp .env.example .env
+<span class="cmt"># Editar .env con tus datos</span>
+
+<span class="cmt"># 5. Crear tablas en Oracle</span>
+<span class="cmt">#    Conectar a OCI SQL Worksheet y ejecutar el DDL</span>
+
+<span class="cmt"># 6. Crear usuario admin inicial</span>
+node scripts/createAdmin.js
+
+<span class="cmt"># 7. Arrancar servidor de desarrollo</span>
+node server/index.js
+<span class="cmt"># o con nodemon para hot-reload:</span>
+npx nodemon server/index.js
+
+<span class="cmt"># 8. Abrir frontend</span>
+<span class="cmt">#    Abrir client/index.html en el navegador</span>
+<span class="cmt">#    o servir con: npx serve client/</span></pre>
+  </div>
+
+  <div class="callout warn">
+    <strong>Para Gmail SMTP:</strong> Ve a tu cuenta Google → Seguridad → Verificación en 2 pasos (activar) → Contraseñas de aplicación → Genera una para "Correo + Windows/Mac". Usa esa como <code>SMTP_PASS</code>, no tu contraseña normal.
+  </div>
+
+  <div class="callout success">
+    <strong>¿Siguiente paso?</strong> Con esta base puedes agregar: recepción de correos con IMAP (librería <code>imapflow</code>), adjuntos con <code>multer</code>, notificaciones en tiempo real con WebSockets, o desplegar el servidor en Railway / Render (free tier) para acceso remoto.
+  </div>
+</div>
+
+</main>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
